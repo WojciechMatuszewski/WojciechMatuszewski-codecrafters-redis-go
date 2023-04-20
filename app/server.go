@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"os"
 )
 
 const (
@@ -15,38 +14,77 @@ const (
 )
 
 func main() {
-	l, err := net.Listen("tcp", fmt.Sprintf("%s:%s", HOST, PORT))
-	if err != nil {
-		fmt.Println("Failed to bind to port 6379")
-		os.Exit(1)
-	}
-	conn, err := l.Accept()
-	if err != nil {
-		fmt.Println("Error accepting connection: ", err.Error())
-		os.Exit(1)
-	}
-	defer conn.Close()
+	address := fmt.Sprintf("%s:%s", HOST, PORT)
+	server := NewServer(address)
+	// This feels bad
+	defer server.Stop()
 
+	server.Start()
+}
+
+type Server struct {
+	listener net.Listener
+	address  string
+	quitch   chan struct{}
+}
+
+func NewServer(address string) *Server {
+	return &Server{
+		address: address,
+		quitch:  make(chan struct{}),
+	}
+}
+
+func (s *Server) Start() error {
+	ln, err := net.Listen("tcp", s.address)
+	if err != nil {
+		return fmt.Errorf("failed to bind to port %s: %w", s.address, err)
+	}
+
+	s.listener = ln
+	defer s.listener.Close()
+
+	go s.acceptLoop()
+
+	<-s.quitch
+
+	return nil
+}
+
+func (s *Server) Stop() {
+	s.quitch <- struct{}{}
+}
+
+func (s *Server) acceptLoop() error {
 	for {
-		_, err = bufio.NewReader(conn).ReadString('\n')
-		fmt.Println("loop")
+		conn, err := s.listener.Accept()
+		if err != nil {
+			fmt.Errorf("failed to accept connection: %w", err)
+			continue
+		}
+
+		fmt.Println("New connection to the server", conn.RemoteAddr())
+
+		go s.readLoop(conn)
+	}
+}
+
+func (s *Server) readLoop(conn net.Conn) error {
+	for {
+		_, err := bufio.NewReader(conn).ReadString('\n')
 		if err != nil {
 			// The EOF here is expected.
 			// Redis seem to first send the command, then, in the next message, the EOF
 			// We cannot use ioutil.ReadAll here as the initial message does not contain EOF
 			if errors.Is(err, io.EOF) {
-				fmt.Println("EOF")
 				break
 			}
 
-			fmt.Println("Error reading from connection: ", err.Error())
-			os.Exit(1)
+			return fmt.Errorf("failed to read from connection: %w", err)
 		}
 
-		_, err = conn.Write([]byte("+PONG\r\n"))
-		if err != nil {
-			fmt.Println("Error writing to connection: ", err.Error())
-			os.Exit(1)
-		}
+		conn.Write([]byte("+PONG\r\n"))
 	}
+
+	return nil
 }
