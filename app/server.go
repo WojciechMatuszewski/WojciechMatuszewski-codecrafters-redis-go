@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"net"
 	"os"
@@ -25,8 +24,7 @@ func main() {
 	}
 	defer conn.Close()
 
-	var buf bytes.Buffer
-	_, err = buf.ReadFrom(conn)
+	_, err = conn.Read(make([]byte, 1024))
 	if err != nil {
 		fmt.Println("Error reading from connection: ", err.Error())
 		os.Exit(1)
