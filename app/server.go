@@ -1,7 +1,9 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 )
@@ -27,6 +29,10 @@ func main() {
 
 		_, err = conn.Read(make([]byte, 1024))
 		if err != nil {
+			if errors.Is(err, io.EOF) {
+				continue
+			}
+
 			fmt.Println("Error reading from connection: ", err.Error())
 			os.Exit(1)
 		}
