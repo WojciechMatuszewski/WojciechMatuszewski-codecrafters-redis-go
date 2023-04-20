@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -27,9 +28,14 @@ func main() {
 	defer conn.Close()
 
 	for {
-		_, err = conn.Read(make([]byte, 1024))
+		_, err = bufio.NewReader(conn).ReadString('\n')
+		fmt.Println("loop")
 		if err != nil {
-			if !errors.Is(err, io.EOF) {
+			// The EOF here is expected.
+			// Redis seem to first send the command, then, in the next message, the EOF
+			// We cannot use ioutil.ReadAll here as the initial message does not contain EOF
+			if errors.Is(err, io.EOF) {
+				fmt.Println("EOF")
 				break
 			}
 
