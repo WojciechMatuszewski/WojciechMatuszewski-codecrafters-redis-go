@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -59,19 +58,19 @@ func (s *Server) acceptLoop() error {
 	for {
 		conn, err := s.listener.Accept()
 		if err != nil {
-			fmt.Errorf("failed to accept connection: %w", err)
+			fmt.Printf("failed to accept connection: %v", err)
 			continue
 		}
 
 		fmt.Println("New connection to the server", conn.RemoteAddr())
-
 		go s.readLoop(conn)
 	}
 }
 
 func (s *Server) readLoop(conn net.Conn) error {
 	for {
-		_, err := bufio.NewReader(conn).ReadString('\n')
+		buf := make([]byte, 1024)
+		_, err := conn.Read(buf)
 		if err != nil {
 			// The EOF here is expected.
 			// Redis seem to first send the command, then, in the next message, the EOF
@@ -82,8 +81,24 @@ func (s *Server) readLoop(conn net.Conn) error {
 
 			return fmt.Errorf("failed to read from connection: %w", err)
 		}
+		parsedInput, err := Parse(buf)
+		if err != nil {
+			fmt.Println("error", err)
+		}
 
-		conn.Write([]byte("+PONG\r\n"))
+		if parsedInput.Command == COMMAND_PING {
+			conn.Write([]byte("+PONG\r\n"))
+			continue
+		}
+
+		if parsedInput.Command == COMMAND_ECHO {
+			response := fmt.Sprintf("$%d\r\n%s\r\n", len(parsedInput.Payload), string(parsedInput.Payload))
+			conn.Write([]byte(response))
+
+			continue
+		}
+
+		fmt.Println("unknown command for input:", string(buf))
 	}
 
 	return nil
